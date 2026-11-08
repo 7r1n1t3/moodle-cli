@@ -1,0 +1,39 @@
+# Hooks run by prek. Install with: prek install
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: rust-analyzer
+        name: rust-analyzer diagnostics
+        entry: scripts/rust-analyzer-check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --quiet
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cog-verify
+        name: cog verify (conventional commit message)
+        entry: cog verify --file
+        language: system
+        stages: [commit-msg]

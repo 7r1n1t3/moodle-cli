@@ -1,0 +1,20 @@
+[package]
+name = "moodle-cli"
+version = "0.1.0"
+edition = "2024"
+description = "TU Darmstadt Moodle from the terminal: open work and file downloads"
+publish = false
+
+[dependencies]
+anyhow = "1.0.104"
+ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "file_chooser"] }
+chrono = "0.4.45"
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+inquire = "0.9.4"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "http2"] }
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
+url = "2.5.8"

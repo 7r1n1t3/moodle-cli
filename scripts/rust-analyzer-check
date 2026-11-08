@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Fail on rust-analyzer errors and warnings. Weak hints such as
+# "inactive code" for #[cfg(test)] blocks are ignored.
+set -uo pipefail
+out=$(rust-analyzer diagnostics . 2>&1) || { echo "$out"; exit 1; }
+if grep -E ': (Error|Warning) ' <<<"$out"; then
+    exit 1
+fi
