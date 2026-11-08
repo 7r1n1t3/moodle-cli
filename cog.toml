@@ -1,0 +1,15 @@
+# cocogitto: conventional commits, changelog and version bumps.
+# `cog bump --auto` updates Cargo.toml, writes CHANGELOG.md and tags vX.Y.Z.
+tag_prefix = "v"
+ignore_merge_commits = true
+branch_whitelist = ["main"]
+pre_bump_hooks = [
+    "sed -i '0,/^version = .*/s//version = \"{{version}}\"/' Cargo.toml",
+    "cargo check --quiet",
+    "git add Cargo.toml Cargo.lock",
+]
+post_bump_hooks = []
+
+[changelog]
+path = "CHANGELOG.md"
+authors = []
