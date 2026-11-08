@@ -4,8 +4,6 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-const BASE: &str = "https://moodle.tu-darmstadt.de";
-
 /// Form parameters in Moodle's flattened format (`name[i]` for lists).
 #[derive(Default)]
 pub struct Params(Vec<(String, String)>);
@@ -30,16 +28,18 @@ impl Params {
 
 pub struct Client {
     http: reqwest::Client,
+    /// Site address without a trailing slash.
+    base: String,
     token: String,
 }
 
 impl Client {
-    pub fn new(token: String) -> Result<Self> {
+    pub fn new(base: String, token: String) -> Result<Self> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .user_agent(concat!("moodle-cli/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { http, token })
+        Ok(Self { http, base, token })
     }
 
     pub async fn call<T: DeserializeOwned>(&self, function: &str, params: Params) -> Result<T> {
@@ -51,7 +51,7 @@ impl Client {
         form.extend(params.0);
         let res: serde_json::Value = self
             .http
-            .post(format!("{BASE}/webservice/rest/server.php"))
+            .post(format!("{}/webservice/rest/server.php", self.base))
             .form(&form)
             .send()
             .await

@@ -1,21 +1,30 @@
-//! Command-line client for TU Darmstadt Moodle.
+//! Command-line client for Moodle.
 
 mod api;
+mod config;
 mod db;
 mod download;
 mod fmt;
 mod portal;
 mod status;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(version, about = "TU Darmstadt Moodle from the terminal")]
+#[command(version, about = "Moodle from the terminal")]
 struct Cli {
     /// Only use favourited courses (default: all in-progress courses)
     #[arg(long, global = true)]
     favourite: bool,
+
+    /// Moodle site address, e.g. https://moodle.example.edu (overrides config.toml)
+    #[arg(long, global = true, value_name = "URL")]
+    url: Option<String>,
+
+    /// Moodle web service token (overrides config.toml; visible in shell history)
+    #[arg(long, global = true, value_name = "TOKEN")]
+    token: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -40,25 +49,15 @@ fn now() -> i64 {
         .unwrap_or(0)
 }
 
-fn read_token() -> Result<String> {
-    let path = dirs::config_dir()
-        .context("cannot find the config directory")?
-        .join("moodle/token");
-    let token = std::fs::read_to_string(&path).with_context(|| {
-        format!(
-            "cannot read the Moodle token from {} (create it with your web service token)",
-            path.display()
-        )
-    })?;
-    Ok(token.trim().to_string())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     inquire::set_global_render_config(download::render_config());
 
-    let client = api::Client::new(read_token()?)?;
+    let Some(config) = config::load(cli.url, cli.token)? else {
+        std::process::exit(1);
+    };
+    let client = api::Client::new(config.url, config.token)?;
     let mut db = db::Db::open_default()?;
     let classification = if cli.favourite {
         "favourites"

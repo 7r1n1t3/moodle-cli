@@ -1,6 +1,6 @@
 # moodle-cli
 
-TU Darmstadt Moodle (`moodle.tu-darmstadt.de`) from the terminal:
+[Moodle](https://moodle.org) from the terminal:
 
 - **`status`**: open assignments, quizzes and other due items for your courses, with submission state. Items you haven't seen before are marked with a red `(new!)`.
 - **`download`**: pick a course, select files from it, and save them through your desktop's file chooser. The tool remembers what you downloaded and where.
@@ -18,7 +18,8 @@ Software Engineering  (https://moodle.tu-darmstadt.de/course/view.php?id=48710)
 
 - Linux with [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/) and a FileChooser backend (GTK, KDE, termfilechooser, …). Only `download` needs it.
 - A Rust toolchain (edition 2024) to build.
-- A Moodle web service token.
+- A Moodle site (3.6 or newer) with the mobile web service enabled. If the Moodle mobile app works for your site, this tool will too.
+- A web service token for that site.
 
 ## Install
 
@@ -30,15 +31,22 @@ Or from a clone: `cargo install --path .`
 
 ## Setup
 
-Put your Moodle web service token in `~/.config/moodle/token`:
+On first launch, `moodle-cli` creates `~/.config/moodle-cli/config.toml`, explains how to get a token, and exits. Fill in both values:
 
-```sh
-mkdir -p ~/.config/moodle
-echo 'YOUR_TOKEN' > ~/.config/moodle/token
-chmod 600 ~/.config/moodle/token
+```toml
+url = "https://moodle.example.edu"
+token = "0123456789abcdef0123456789abcdef"
 ```
 
-To get the token, open Moodle's *Preferences → Security keys* and copy the key for the *Moodle mobile web service*.
+To get the token:
+
+1. Log in to Moodle in your browser.
+2. Open the user menu → *Preferences* → *Security keys*, or go to `<url>/user/managetoken.php`.
+3. Copy the key for the *Moodle mobile web service*. Create it if there is none.
+
+If there is no *Security keys* page, your site has it turned off; ask your Moodle admins.
+
+You can also pass `--url` and `--token` on the command line. They override the config file, so you don't need one. A token passed this way ends up in your shell history.
 
 ## Usage
 
@@ -47,6 +55,7 @@ moodle-cli status                # look 21 days ahead (overdue items: 30 days ba
 moodle-cli status --days 7       # custom look-ahead window
 moodle-cli download              # interactive file picker
 moodle-cli --favourite status    # only favourited courses (works for both commands)
+moodle-cli --url https://moodle.example.edu --token TOKEN status
 ```
 
 By default both commands cover all in-progress courses.
