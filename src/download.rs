@@ -1,7 +1,8 @@
 //! `moodle-cli download`: pick course files and save them via the portal.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use inquire::error::InquireError;
@@ -217,19 +218,15 @@ async fn save(
     files: &[RemoteFile],
     now: &impl Fn() -> i64,
 ) -> Result<()> {
-    println!("{}", col("→ choose where to save…", CYAN));
-    let names: Vec<String> = files.iter().map(|f| f.filename.clone()).collect();
-    let targets = portal::save_locations(&names).await?;
+    println!("{}", col("→ choose a folder to save into…", CYAN));
+    let Some(dir) = portal::pick_folder(files.len()).await? else {
+        println!("  {}", col("cancelled, nothing saved", DIM));
+        return Ok(());
+    };
+    let names: Vec<&str> = files.iter().map(|f| f.filename.as_str()).collect();
+    let targets = target_paths(&dir, &names);
 
-    for (f, target) in files.iter().zip(targets) {
-        let Some(path) = target else {
-            println!(
-                "  {} {}",
-                col("–", DIM),
-                col(&format!("{} skipped", f.filename), DIM)
-            );
-            continue;
-        };
+    for (f, path) in files.iter().zip(targets) {
         let result = async {
             let bytes = client.download(&f.url).await?;
             std::fs::write(&path, bytes)?;
@@ -264,4 +261,56 @@ async fn save(
         }
     }
     Ok(())
+}
+
+/// Paths inside `dir` for each of `names`. Names are reduced to their last
+/// component, and repeats within the batch get a ` (2)`, ` (3)`, … suffix.
+/// Existing files on disk are overwritten.
+fn target_paths(dir: &Path, names: &[&str]) -> Vec<PathBuf> {
+    let mut used = HashSet::new();
+    names
+        .iter()
+        .map(|name| {
+            let base = Path::new(name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file");
+            let mut candidate = base.to_string();
+            let mut n = 2;
+            while !used.insert(candidate.clone()) {
+                candidate = match base.rsplit_once('.') {
+                    Some((stem, ext)) if !stem.is_empty() => format!("{stem} ({n}).{ext}"),
+                    _ => format!("{base} ({n})"),
+                };
+                n += 1;
+            }
+            dir.join(candidate)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn target_paths_dedupes_and_strips_dirs() {
+        let dir = Path::new("/d");
+        let got = target_paths(
+            dir,
+            &[
+                "a.pdf", "a.pdf", "../x", ".bashrc", ".bashrc", "..", "a.pdf",
+            ],
+        );
+        let want = [
+            "a.pdf",
+            "a (2).pdf",
+            "x",
+            ".bashrc",
+            ".bashrc (2)",
+            "file",
+            "a (3).pdf",
+        ];
+        assert_eq!(got, want.iter().map(|w| dir.join(w)).collect::<Vec<_>>());
+    }
 }

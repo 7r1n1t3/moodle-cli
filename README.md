@@ -73,7 +73,7 @@ The first run marks everything `(new!)`. After that, only new items get the mark
 
 1. Choose a course. Type to filter.
 2. Select files with space (→ selects all, ← selects none). The list contains course files and the files attached to assignments.
-3. Choose where to save in the file chooser. For several files the tool asks the portal for all locations at once; if your backend can't do that, it asks once per file.
+3. Choose a folder in the file chooser. All selected files are saved there under their Moodle names. Existing files with the same name are overwritten, and duplicate names within one batch get a ` (2)`, ` (3)`, … suffix.
 4. Answer whether you want to download other files.
 
 Files you already downloaded show `(downloaded DD.MM → path)`. If the file changed on Moodle since then, they show `(updated)` instead.
