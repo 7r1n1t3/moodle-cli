@@ -156,6 +156,7 @@ pub async fn run(
                         match save(client, db, &course, &files, &now).await? {
                             Outcome::Done => break,
                             Outcome::Back => continue,
+                            Outcome::Quit => return Ok(()),
                         }
                     }
                     Ok(_) => break,
@@ -228,6 +229,8 @@ enum Outcome {
     Done,
     /// Nothing saved; show the file list again.
     Back,
+    /// The user pressed Ctrl-C.
+    Quit,
 }
 
 async fn save(
@@ -244,6 +247,29 @@ async fn save(
     };
     let names: Vec<&str> = files.iter().map(|f| f.filename.as_str()).collect();
     let targets = target_paths(&dir, &names);
+
+    let existing: Vec<&PathBuf> = targets.iter().filter(|p| p.exists()).collect();
+    if !existing.is_empty() {
+        println!(
+            "{}",
+            col(
+                &format!(
+                    "! {} file(s) already exist and will be overwritten:",
+                    existing.len()
+                ),
+                YELLOW
+            )
+        );
+        for p in &existing {
+            println!("  {}", tilde(&p.to_string_lossy()));
+        }
+        match Confirm::new("Overwrite them?").with_default(false).prompt() {
+            Ok(true) => {}
+            Ok(false) | Err(InquireError::OperationCanceled) => return Ok(Outcome::Back),
+            Err(e) if aborted(&e) => return Ok(Outcome::Quit),
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     for (f, path) in files.iter().zip(targets) {
         let result = async {
