@@ -20,7 +20,9 @@ pub async fn pick_folder(count: usize) -> Result<Option<PathBuf>> {
         .response();
     match res {
         Ok(sel) => Ok(sel.uris().first().map(uri_to_path).transpose()?),
-        Err(ashpd::Error::Response(ResponseError::Cancelled)) => Ok(None),
+        // Some backends (e.g. termfilechooser) report closing the chooser
+        // without a choice as `Other` rather than `Cancelled`.
+        Err(ashpd::Error::Response(ResponseError::Cancelled | ResponseError::Other)) => Ok(None),
         Err(e) => Err(e).context("file chooser portal"),
     }
 }

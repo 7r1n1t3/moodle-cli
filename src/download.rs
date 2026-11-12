@@ -91,7 +91,7 @@ pub async fn run(
         .map(|c| (c.id, c.assignments))
         .collect();
 
-    loop {
+    'courses: loop {
         let options: Vec<Item<Course>> = courses
             .iter()
             .map(|c| Item {
@@ -131,27 +131,38 @@ pub async fn run(
             println!("{}", col("  no files in this course", DIM));
         } else {
             let downloaded = db.last_downloads()?;
-            let items: Vec<Item<RemoteFile>> = files
-                .into_iter()
-                .map(|(prefix, f)| file_item(prefix, f, &downloaded))
-                .collect();
-            let picked = MultiSelect::new("Files:", items)
-                .with_scorer(&contains_all)
-                .with_formatter(&|sel| format!("{} file(s)", sel.len()))
-                .with_page_size(15)
-                .with_help_message(
-                    "space to toggle, → all, ← none, type to filter, enter to save, esc to go back",
-                )
-                .prompt();
-            match picked {
-                Ok(sel) if !sel.is_empty() => {
-                    let files: Vec<RemoteFile> = sel.into_iter().map(|i| i.value).collect();
-                    save(client, db, &course, &files, &now).await?;
+            // Indices picked last time, so returning here keeps the selection.
+            let mut selected: Vec<usize> = Vec::new();
+            loop {
+                let items: Vec<Item<RemoteFile>> = files
+                    .iter()
+                    .cloned()
+                    .map(|(prefix, f)| file_item(prefix, f, &downloaded))
+                    .collect();
+                let picked = MultiSelect::new("Files:", items)
+                    .with_scorer(&contains_all)
+                    .with_formatter(&|sel| format!("{} file(s)", sel.len()))
+                    .with_page_size(15)
+                    .with_default(&selected)
+                    .with_help_message(
+                        "space to toggle, → all, ← none, type to filter, enter to save, esc to go back",
+                    )
+                    .raw_prompt();
+                match picked {
+                    Ok(sel) if !sel.is_empty() => {
+                        selected = sel.iter().map(|o| o.index).collect();
+                        let files: Vec<RemoteFile> =
+                            sel.into_iter().map(|o| o.value.value).collect();
+                        match save(client, db, &course, &files, &now).await? {
+                            Outcome::Done => break,
+                            Outcome::Back => continue,
+                        }
+                    }
+                    Ok(_) => break,
+                    Err(InquireError::OperationCanceled) => continue 'courses,
+                    Err(e) if aborted(&e) => return Ok(()),
+                    Err(e) => return Err(e.into()),
                 }
-                Ok(_) => {}
-                Err(InquireError::OperationCanceled) => continue,
-                Err(e) if aborted(&e) => return Ok(()),
-                Err(e) => return Err(e.into()),
             }
         }
 
@@ -211,17 +222,25 @@ fn file_item(
     }
 }
 
+/// What to do after `save`.
+enum Outcome {
+    /// Files were downloaded (or attempted).
+    Done,
+    /// Nothing saved; show the file list again.
+    Back,
+}
+
 async fn save(
     client: &Client,
     db: &Db,
     course: &Course,
     files: &[RemoteFile],
     now: &impl Fn() -> i64,
-) -> Result<()> {
+) -> Result<Outcome> {
     println!("{}", col("→ choose a folder to save into…", CYAN));
     let Some(dir) = portal::pick_folder(files.len()).await? else {
         println!("  {}", col("cancelled, nothing saved", DIM));
-        return Ok(());
+        return Ok(Outcome::Back);
     };
     let names: Vec<&str> = files.iter().map(|f| f.filename.as_str()).collect();
     let targets = target_paths(&dir, &names);
@@ -260,7 +279,7 @@ async fn save(
             ),
         }
     }
-    Ok(())
+    Ok(Outcome::Done)
 }
 
 /// Paths inside `dir` for each of `names`. Names are reduced to their last
