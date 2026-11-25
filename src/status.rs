@@ -48,6 +48,7 @@ pub async fn run(
     let mut total_open = 0;
 
     for c in courses {
+        let course_events = events.remove(&c.id).unwrap_or_default();
         // (due, status tag, rest of the line)
         let mut lines: Vec<(i64, String, String)> = Vec::new();
         // (module name, course-module id) of items already listed above the
@@ -116,11 +117,24 @@ pub async fn run(
             push(&mut rows, &mut lines, row, tag, line);
         }
 
+        // Close date per quiz course-module id. The calendar applies user and
+        // group overrides to it, `timeclose` does not.
+        let quiz_close: HashMap<i64, i64> = course_events
+            .iter()
+            .filter(|e| {
+                e.modulename.as_deref() == Some("quiz") && e.eventtype.as_deref() == Some("close")
+            })
+            .filter_map(|e| Some((e.instance?, e.timesort)))
+            .collect();
         // Calendar action events contain only work Moodle currently considers
         // actionable. Fetch quizzes directly as well so completed quizzes and
         // quizzes omitted by the calendar provider are still shown.
         for q in quizzes.remove(&c.id).unwrap_or_default() {
-            let due = q.timeclose.unwrap_or(0);
+            let due = quiz_close
+                .get(&q.coursemodule)
+                .copied()
+                .or(q.timeclose)
+                .unwrap_or(0);
             if due == 0 || !(from..=to).contains(&due) {
                 continue;
             }
@@ -171,7 +185,7 @@ pub async fn run(
             push(&mut rows, &mut lines, row, tag, line);
         }
 
-        for e in events.remove(&c.id).unwrap_or_default() {
+        for e in course_events {
             if e.modulename
                 .as_deref()
                 .zip(e.instance)
