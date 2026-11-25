@@ -127,6 +127,51 @@ impl Client {
         .await
     }
 
+    pub async fn quizzes(&self, ids: &[i64]) -> Result<Vec<Quiz>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            quizzes: Vec<Quiz>,
+        }
+        let r: Resp = self
+            .call(
+                "mod_quiz_get_quizzes_by_courses",
+                Params::new().list("courseids", ids),
+            )
+            .await?;
+        Ok(r.quizzes)
+    }
+
+    pub async fn quiz_attempts(&self, quiz_id: i64) -> Result<Vec<QuizAttempt>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            attempts: Vec<QuizAttempt>,
+        }
+        let r: Resp = self
+            .call(
+                "mod_quiz_get_user_attempts",
+                Params::new().arg("quizid", quiz_id).arg("status", "all"),
+            )
+            .await?;
+        Ok(r.attempts)
+    }
+
+    pub async fn quiz_grade(&self, quiz_id: i64) -> Result<Option<f64>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            hasgrade: bool,
+            grade: Option<f64>,
+        }
+        let r: Resp = self
+            .call(
+                "mod_quiz_get_user_best_grade",
+                Params::new().arg("quizid", quiz_id),
+            )
+            .await?;
+        Ok(if r.hasgrade { r.grade } else { None })
+    }
+
     pub async fn course_contents(&self, course_id: i64) -> Result<Vec<Section>> {
         self.call(
             "core_course_get_contents",
@@ -227,6 +272,26 @@ pub struct Assignment {
     pub duedate: Option<i64>,
     #[serde(default)]
     pub introattachments: Vec<FileEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Quiz {
+    pub id: i64,
+    pub course: i64,
+    pub coursemodule: i64,
+    pub name: String,
+    #[serde(default)]
+    pub timeclose: Option<i64>,
+    #[serde(rename = "grade")]
+    pub max_grade: Option<f64>,
+    #[serde(rename = "decimalpoints")]
+    pub decimal_places: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuizAttempt {
+    #[serde(default)]
+    pub state: String,
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
-use crate::api::{Client, Course};
+use crate::api::{Client, Course, QuizAttempt};
 use crate::db::{Db, TodoRow};
 use crate::fmt::{BOLD, DIM, GREEN, RED, YELLOW, col, when};
 
@@ -22,17 +22,24 @@ pub async fn run(
     let to = now + days * 86400;
     let ids: Vec<i64> = courses.iter().map(|c| c.id).collect();
 
-    let (mut events, mut assigns) = if ids.is_empty() {
-        (HashMap::new(), HashMap::new())
+    let (mut events, mut assigns, mut quizzes) = if ids.is_empty() {
+        (HashMap::new(), HashMap::new(), HashMap::new())
     } else {
         let events = client.action_events(&ids, from, to).await?;
         let assigns = client.assignments(&ids).await?;
+        let quizzes = client.quizzes(&ids).await?;
         (
             events.into_iter().map(|g| (g.courseid, g.events)).collect(),
             assigns
                 .into_iter()
                 .map(|c| (c.id, c.assignments))
                 .collect::<HashMap<_, _>>(),
+            quizzes
+                .into_iter()
+                .fold(HashMap::new(), |mut by_course, q| {
+                    by_course.entry(q.course).or_insert_with(Vec::new).push(q);
+                    by_course
+                }),
         )
     };
 
@@ -75,6 +82,7 @@ pub async fn run(
             let tag = if status == "submitted" {
                 let mut t = col("✓ submitted", GREEN);
                 if let Some(g) = graded {
+                    let g = g.replace("&nbsp;", "");
                     t.push_str(&format!(", grade: {g}"));
                 }
                 t
@@ -103,8 +111,55 @@ pub async fn run(
             push(&mut rows, &mut lines, row, line);
         }
 
+        // Calendar action events contain only work Moodle currently considers
+        // actionable. Fetch quizzes directly as well so completed quizzes and
+        // quizzes omitted by the calendar provider are still shown.
+        for q in quizzes.remove(&c.id).unwrap_or_default() {
+            let due = q.timeclose.unwrap_or(0);
+            if due == 0 || !(from..=to).contains(&due) {
+                continue;
+            }
+            seen.extend([q.id, q.coursemodule]);
+            let attempts = client.quiz_attempts(q.id).await?;
+            let status = quiz_status(&attempts);
+            let tag = if status == "submitted" {
+                let mut tag = col("✓ submitted", GREEN);
+                match client.quiz_grade(q.id).await {
+                    Ok(Some(earned)) => {
+                        let grade = format_quiz_grade(earned, q.max_grade, q.decimal_places);
+                        tag.push_str(&format!(", grade: {grade}"));
+                    }
+                    Ok(None) => {}
+                    Err(err) => eprintln!("Could not load grade for {}: {err}", q.name),
+                }
+                tag
+            } else if due < now {
+                total_open += 1;
+                col("✗ OVERDUE", RED)
+            } else {
+                total_open += 1;
+                if status == "new" {
+                    col("○ to do", YELLOW)
+                } else {
+                    col(&format!("○ {status}"), YELLOW)
+                }
+            };
+            let line = format!("  {tag:<24} {} [quiz]  — due {}", q.name, when(due, now));
+            let row = TodoRow {
+                key: format!("quiz:{}", q.id),
+                course_id: c.id,
+                course_name: c.name().to_string(),
+                kind: "quiz",
+                moodle_id: q.id,
+                name: q.name,
+                due,
+                status: status.into(),
+            };
+            push(&mut rows, &mut lines, row, line);
+        }
+
         for e in events.remove(&c.id).unwrap_or_default() {
-            if e.modulename.as_deref() == Some("assign")
+            if matches!(e.modulename.as_deref(), Some("assign" | "quiz"))
                 && e.instance.is_some_and(|i| seen.contains(&i))
             {
                 continue;
@@ -169,4 +224,58 @@ pub async fn run(
     };
     println!("{}", col(&summary, BOLD));
     Ok(())
+}
+
+fn format_quiz_grade(earned: f64, maximum: Option<f64>, decimal_places: Option<usize>) -> String {
+    let places = decimal_places.unwrap_or(2).min(5);
+    let grade = match maximum {
+        Some(max) => format!("{earned:.places$} / {max:.places$}"),
+        None => format!("{earned:.places$}"),
+    };
+    grade.replace('.', ",")
+}
+
+fn quiz_status(attempts: &[QuizAttempt]) -> &str {
+    if attempts.iter().any(|a| a.state == "finished") {
+        "submitted"
+    } else if attempts
+        .iter()
+        .any(|a| matches!(a.state.as_str(), "inprogress" | "overdue"))
+    {
+        "in progress"
+    } else {
+        "new"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn displays_scaled_quiz_grade_including_zero() {
+        assert_eq!(format_quiz_grade(1.0, Some(1.0), None), "1,00 / 1,00");
+        assert_eq!(format_quiz_grade(0.0, Some(10.0), Some(1)), "0,0 / 10,0");
+        assert_eq!(format_quiz_grade(2.5, None, Some(2)), "2,50");
+    }
+
+    fn attempt(state: &str) -> QuizAttempt {
+        QuizAttempt {
+            state: state.into(),
+        }
+    }
+
+    #[test]
+    fn quiz_status_uses_finished_attempt_even_if_another_is_open() {
+        assert_eq!(
+            quiz_status(&[attempt("finished"), attempt("inprogress")]),
+            "submitted"
+        );
+    }
+
+    #[test]
+    fn quiz_status_recognises_open_and_missing_attempts() {
+        assert_eq!(quiz_status(&[attempt("inprogress")]), "in progress");
+        assert_eq!(quiz_status(&[]), "new");
+    }
 }
