@@ -127,6 +127,60 @@ impl Client {
         .await
     }
 
+    pub async fn quizzes(&self, ids: &[i64]) -> Result<Vec<Quiz>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            quizzes: Vec<Quiz>,
+        }
+        let r: Resp = self
+            .call(
+                "mod_quiz_get_quizzes_by_courses",
+                Params::new().list("courseids", ids),
+            )
+            .await?;
+        Ok(r.quizzes)
+    }
+
+    pub async fn quiz_attempts(&self, quiz_id: i64) -> Result<Vec<QuizAttempt>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            attempts: Vec<QuizAttempt>,
+        }
+        let r: Resp = self
+            .call(
+                "mod_quiz_get_user_attempts",
+                Params::new().arg("quizid", quiz_id).arg("status", "all"),
+            )
+            .await?;
+        Ok(r.attempts)
+    }
+
+    /// The current user's grade items in a course, formatted by Moodle.
+    pub async fn grade_items(&self, course_id: i64) -> Result<Vec<GradeItem>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            usergrades: Vec<UserGrades>,
+        }
+        #[derive(Deserialize)]
+        struct UserGrades {
+            #[serde(default)]
+            gradeitems: Vec<GradeItem>,
+        }
+        let r: Resp = self
+            .call(
+                "gradereport_user_get_grade_items",
+                Params::new().arg("courseid", course_id),
+            )
+            .await?;
+        Ok(r.usergrades
+            .into_iter()
+            .flat_map(|u| u.gradeitems)
+            .collect())
+    }
+
     pub async fn course_contents(&self, course_id: i64) -> Result<Vec<Section>> {
         self.call(
             "core_course_get_contents",
@@ -227,6 +281,32 @@ pub struct Assignment {
     pub duedate: Option<i64>,
     #[serde(default)]
     pub introattachments: Vec<FileEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Quiz {
+    pub id: i64,
+    pub course: i64,
+    pub coursemodule: i64,
+    pub name: String,
+    #[serde(default)]
+    pub timeclose: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GradeItem {
+    #[serde(default)]
+    pub itemmodule: Option<String>,
+    #[serde(default)]
+    pub iteminstance: Option<i64>,
+    #[serde(default)]
+    pub gradeformatted: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuizAttempt {
+    #[serde(default)]
+    pub state: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
