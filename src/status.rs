@@ -50,7 +50,10 @@ pub async fn run(
     for c in courses {
         // (due, status tag, rest of the line)
         let mut lines: Vec<(i64, String, String)> = Vec::new();
-        let mut seen = HashSet::new();
+        // (module name, course-module id) of items already listed above the
+        // calendar events, so their events are not shown twice. An action
+        // event's `instance` is the course-module id, not the module's id.
+        let mut seen: HashSet<(&str, i64)> = HashSet::new();
         let push = |rows: &mut Vec<TodoRow>,
                     lines: &mut Vec<(i64, String, String)>,
                     row: TodoRow,
@@ -70,7 +73,7 @@ pub async fn run(
             if due == 0 || !(from..=to).contains(&due) {
                 continue;
             }
-            seen.extend([a.id, a.cmid]);
+            seen.insert(("assign", a.cmid));
             let st = client.submission_status(a.id).await?;
             let status = st
                 .lastattempt
@@ -121,7 +124,7 @@ pub async fn run(
             if due == 0 || !(from..=to).contains(&due) {
                 continue;
             }
-            seen.extend([q.id, q.coursemodule]);
+            seen.insert(("quiz", q.coursemodule));
             let attempts = client.quiz_attempts(q.id).await?;
             let status = quiz_status(&attempts);
             let tag = if status == "submitted" {
@@ -161,8 +164,10 @@ pub async fn run(
         }
 
         for e in events.remove(&c.id).unwrap_or_default() {
-            if matches!(e.modulename.as_deref(), Some("assign" | "quiz"))
-                && e.instance.is_some_and(|i| seen.contains(&i))
+            if e.modulename
+                .as_deref()
+                .zip(e.instance)
+                .is_some_and(|key| seen.contains(&key))
             {
                 continue;
             }
