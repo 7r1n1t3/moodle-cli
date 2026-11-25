@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use crate::api::{Client, Course, QuizAttempt};
 use crate::db::{Db, TodoRow};
-use crate::fmt::{BOLD, DIM, GREEN, RED, YELLOW, col, when};
+use crate::fmt::{BOLD, DIM, GREEN, RED, YELLOW, col, visible_width, when};
 
 /// Days back to look for overdue items.
 const LOOKBACK: i64 = 30;
@@ -48,18 +48,20 @@ pub async fn run(
     let mut total_open = 0;
 
     for c in courses {
-        let mut lines: Vec<(i64, String)> = Vec::new();
+        // (due, status tag, rest of the line)
+        let mut lines: Vec<(i64, String, String)> = Vec::new();
         let mut seen = HashSet::new();
         let push = |rows: &mut Vec<TodoRow>,
-                    lines: &mut Vec<(i64, String)>,
+                    lines: &mut Vec<(i64, String, String)>,
                     row: TodoRow,
+                    tag: String,
                     line: String| {
             let line = if known.contains(&row.key) {
                 line
             } else {
                 format!("{line} {}", col("(new!)", RED))
             };
-            lines.push((row.due, line));
+            lines.push((row.due, tag, line));
             rows.push(row);
         };
 
@@ -97,7 +99,7 @@ pub async fn run(
                     col(&format!("○ {status}"), YELLOW)
                 }
             };
-            let line = format!("  {tag:<24} {}  — due {}", a.name, when(due, now));
+            let line = format!("{}  — due {}", a.name, when(due, now));
             let row = TodoRow {
                 key: format!("assign:{}", a.id),
                 course_id: c.id,
@@ -108,7 +110,7 @@ pub async fn run(
                 due,
                 status,
             };
-            push(&mut rows, &mut lines, row, line);
+            push(&mut rows, &mut lines, row, tag, line);
         }
 
         // Calendar action events contain only work Moodle currently considers
@@ -144,7 +146,7 @@ pub async fn run(
                     col(&format!("○ {status}"), YELLOW)
                 }
             };
-            let line = format!("  {tag:<24} {} [quiz]  — due {}", q.name, when(due, now));
+            let line = format!("{} [quiz]  — due {}", q.name, when(due, now));
             let row = TodoRow {
                 key: format!("quiz:{}", q.id),
                 course_id: c.id,
@@ -155,7 +157,7 @@ pub async fn run(
                 due,
                 status: status.into(),
             };
-            push(&mut rows, &mut lines, row, line);
+            push(&mut rows, &mut lines, row, tag, line);
         }
 
         for e in events.remove(&c.id).unwrap_or_default() {
@@ -181,11 +183,7 @@ pub async fn run(
                 .or(e.eventtype)
                 .unwrap_or_default();
             let module = e.modulename.unwrap_or_default();
-            let line = format!(
-                "  {tag:<24} {} [{module}: {label}]  — {}",
-                e.name,
-                when(ts, now)
-            );
+            let line = format!("{} [{module}: {label}]  — {}", e.name, when(ts, now));
             let row = TodoRow {
                 key: format!("event:{}", e.id),
                 course_id: c.id,
@@ -196,7 +194,7 @@ pub async fn run(
                 due: ts,
                 status: if overdue { "overdue" } else { "todo" }.into(),
             };
-            push(&mut rows, &mut lines, row, line);
+            push(&mut rows, &mut lines, row, tag, line);
         }
 
         println!(
@@ -208,8 +206,11 @@ pub async fn run(
             println!("{}", col("  nothing due", DIM));
         } else {
             lines.sort();
-            for (_, l) in lines {
-                println!("{l}");
+            let width = lines.iter().map(|(_, t, _)| visible_width(t)).max();
+            let width = width.unwrap_or(0);
+            for (_, tag, line) in lines {
+                let pad = " ".repeat(width - visible_width(&tag));
+                println!("  {tag}{pad} {line}");
             }
         }
         println!();

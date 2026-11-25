@@ -23,6 +23,20 @@ pub fn col(s: &str, code: &str) -> String {
     }
 }
 
+/// Number of characters `s` takes up on screen, ignoring colour codes.
+pub fn visible_width(s: &str) -> usize {
+    let mut width = 0;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            chars.by_ref().find(|&c| c == 'm');
+        } else {
+            width += 1;
+        }
+    }
+    width
+}
+
 /// `Mon 03.11 14:00 (in 2d)`, relative to `now`.
 pub fn when(ts: i64, now: i64) -> String {
     let date = Local
@@ -86,6 +100,12 @@ mod tests {
         assert_eq!(relative(now + 3 * 86400, now), "in 3d");
         assert_eq!(relative(now + 5 * 3600, now), "in 5h");
         assert_eq!(relative(now - 2 * 86400, now), "2d ago");
+    }
+
+    #[test]
+    fn visible_width_ignores_colour_codes() {
+        assert_eq!(visible_width("\x1b[32m✓ submitted\x1b[0m"), 11);
+        assert_eq!(visible_width("○ to do"), 7);
     }
 
     #[test]
