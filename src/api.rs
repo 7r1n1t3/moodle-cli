@@ -157,19 +157,28 @@ impl Client {
         Ok(r.attempts)
     }
 
-    pub async fn quiz_grade(&self, quiz_id: i64) -> Result<Option<f64>> {
+    /// The current user's grade items in a course, formatted by Moodle.
+    pub async fn grade_items(&self, course_id: i64) -> Result<Vec<GradeItem>> {
         #[derive(Deserialize)]
         struct Resp {
-            hasgrade: bool,
-            grade: Option<f64>,
+            #[serde(default)]
+            usergrades: Vec<UserGrades>,
+        }
+        #[derive(Deserialize)]
+        struct UserGrades {
+            #[serde(default)]
+            gradeitems: Vec<GradeItem>,
         }
         let r: Resp = self
             .call(
-                "mod_quiz_get_user_best_grade",
-                Params::new().arg("quizid", quiz_id),
+                "gradereport_user_get_grade_items",
+                Params::new().arg("courseid", course_id),
             )
             .await?;
-        Ok(if r.hasgrade { r.grade } else { None })
+        Ok(r.usergrades
+            .into_iter()
+            .flat_map(|u| u.gradeitems)
+            .collect())
     }
 
     pub async fn course_contents(&self, course_id: i64) -> Result<Vec<Section>> {
@@ -282,10 +291,16 @@ pub struct Quiz {
     pub name: String,
     #[serde(default)]
     pub timeclose: Option<i64>,
-    #[serde(rename = "grade")]
-    pub max_grade: Option<f64>,
-    #[serde(rename = "decimalpoints")]
-    pub decimal_places: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GradeItem {
+    #[serde(default)]
+    pub itemmodule: Option<String>,
+    #[serde(default)]
+    pub iteminstance: Option<i64>,
+    #[serde(default)]
+    pub gradeformatted: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

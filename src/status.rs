@@ -131,6 +131,9 @@ pub async fn run(
         // Calendar action events contain only work Moodle currently considers
         // actionable. Fetch quizzes directly as well so completed quizzes and
         // quizzes omitted by the calendar provider are still shown.
+        // Quiz grades formatted by Moodle, by quiz id; loaded once per course
+        // when the first submitted quiz needs one.
+        let mut quiz_grades: Option<HashMap<i64, String>> = None;
         for q in quizzes.remove(&c.id).unwrap_or_default() {
             let due = quiz_close
                 .get(&q.coursemodule)
@@ -153,13 +156,23 @@ pub async fn run(
             let status = quiz_status(&attempts);
             let tag = if status == "submitted" {
                 let mut tag = col("✓ submitted", GREEN);
-                match client.quiz_grade(q.id).await {
-                    Ok(Some(earned)) => {
-                        let grade = format_quiz_grade(earned, q.max_grade, q.decimal_places);
-                        tag.push_str(&format!(", grade: {grade}"));
-                    }
-                    Ok(None) => {}
-                    Err(err) => eprintln!("Could not load grade for {}: {err}", q.name),
+                if quiz_grades.is_none() {
+                    quiz_grades = Some(match client.grade_items(c.id).await {
+                        Ok(items) => items
+                            .into_iter()
+                            .filter(|i| i.itemmodule.as_deref() == Some("quiz"))
+                            .filter_map(|i| Some((i.iteminstance?, i.gradeformatted?)))
+                            .collect(),
+                        Err(err) => {
+                            eprintln!("Could not load grades for {}: {err}", c.name());
+                            HashMap::new()
+                        }
+                    });
+                }
+                // Moodle shows "-" for items without a grade.
+                let grade = quiz_grades.as_ref().and_then(|g| g.get(&q.id));
+                if let Some(grade) = grade.filter(|g| !g.is_empty() && *g != "-") {
+                    tag.push_str(&format!(", grade: {grade}"));
                 }
                 tag
             } else if due < now {
@@ -265,15 +278,6 @@ pub async fn run(
     Ok(())
 }
 
-fn format_quiz_grade(earned: f64, maximum: Option<f64>, decimal_places: Option<usize>) -> String {
-    let places = decimal_places.unwrap_or(2).min(5);
-    let grade = match maximum {
-        Some(max) => format!("{earned:.places$}/{max:.places$}"),
-        None => format!("{earned:.places$}"),
-    };
-    grade.replace('.', ",")
-}
-
 fn quiz_status(attempts: &[QuizAttempt]) -> &str {
     if attempts.iter().any(|a| a.state == "finished") {
         "submitted"
@@ -290,13 +294,6 @@ fn quiz_status(attempts: &[QuizAttempt]) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn displays_scaled_quiz_grade_including_zero() {
-        assert_eq!(format_quiz_grade(1.0, Some(1.0), None), "1,00/1,00");
-        assert_eq!(format_quiz_grade(0.0, Some(10.0), Some(1)), "0,0/10,0");
-        assert_eq!(format_quiz_grade(2.5, None, Some(2)), "2,50");
-    }
 
     fn attempt(state: &str) -> QuizAttempt {
         QuizAttempt {
