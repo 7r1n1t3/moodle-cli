@@ -229,7 +229,7 @@ pub async fn run(
 fn format_quiz_grade(earned: f64, maximum: Option<f64>, decimal_places: Option<usize>) -> String {
     let places = decimal_places.unwrap_or(2).min(5);
     let grade = match maximum {
-        Some(max) => format!("{earned:.places$} / {max:.places$}"),
+        Some(max) => format!("{earned:.places$}/{max:.places$}"),
         None => format!("{earned:.places$}"),
     };
     grade.replace('.', ",")
@@ -254,8 +254,8 @@ mod tests {
 
     #[test]
     fn displays_scaled_quiz_grade_including_zero() {
-        assert_eq!(format_quiz_grade(1.0, Some(1.0), None), "1,00 / 1,00");
-        assert_eq!(format_quiz_grade(0.0, Some(10.0), Some(1)), "0,0 / 10,0");
+        assert_eq!(format_quiz_grade(1.0, Some(1.0), None), "1,00/1,00");
+        assert_eq!(format_quiz_grade(0.0, Some(10.0), Some(1)), "0,0/10,0");
         assert_eq!(format_quiz_grade(2.5, None, Some(2)), "2,50");
     }
 
