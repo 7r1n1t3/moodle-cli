@@ -30,7 +30,7 @@ prek run --all-files                            # fmt, clippy, rust-analyzer, te
 - `src/api.rs`: `Client::call` POSTs to `<url>/webservice/rest/server.php`. `Params` flattens lists into `name[i]`; a response with an `exception` key becomes an error. It also holds the typed wrappers and response structs. `download()` adds `token=` to file URLs and rewrites `/pluginfile.php` to `/webservice/pluginfile.php`.
 - `src/status.rs`: a port of the original Python script. Course names are shortened to the part before the first `" - "`. Assignments due in `[now - 30d, now + days]` get `mod_assign_get_submission_status` (one request each). Calendar action events are merged in, skipping `assign` events already covered (the `seen` set holds assignment `id` and `cmid`) and non-actionable ones.
 - `src/download.rs`: the picker flow. Files come from `core_course_get_contents` (modules with `contents[type == "file"]`) and from assignment `introattachments`. Already-downloaded files are tagged `(downloaded …)`, or `(updated)` if Moodle's `timemodified` is newer.
-- `src/portal.rs`: `pick_folder` opens `OpenFile` with `directory=true`. Cancelling (portal `Cancelled` or `Other`) returns to the file list. `download::target_paths` keeps only the last component of each filename and adds ` (2)`, ` (3)`, … when names repeat within a batch. Files that already exist are listed and need a confirmation; declining returns to the file list.
+- `src/portal.rs`: `pick_folder` opens `OpenFile` with `directory=true`. Cancelling (portal `Cancelled` or `Other`) returns to the file list. `download::target_paths` keeps only the last component of each filename and adds `(2)`, `(3)`, … when names repeat within a batch. Files that already exist are listed and need a confirmation; declining returns to the file list.
 - `src/db.rs`: SQLite in `~/.local/share/moodle-cli/moodle-cli.db`. Migrations are keyed on `PRAGMA user_version`; append new ones to `MIGRATIONS`, never edit old ones.
   - `todo_items`: key `assign:<id>` / `event:<id>`, with `first_seen` and `last_seen`.
   - `downloads`: one row per saved file (URL, timemodified, path, time).
@@ -40,3 +40,9 @@ prek run --all-files                            # fmt, clippy, rust-analyzer, te
 
 - Commits follow Conventional Commits. The `commit-msg` hook runs `cog verify`, and `cog bump --auto` bumps the version and writes the changelog (see `cog.toml`).
 - Hooks are configured in `.pre-commit-config.yaml` and run by `prek`. `scripts/rust-analyzer-check` fails on rust-analyzer errors and warnings.
+
+### AI usage disclosure
+
+Add a trailer to commits where AI was involved: `Assisted-by: TOOL (MODEL)` when it helped make decisions or wrote
+parts of the code, `Generated-by: TOOL (MODEL)` when it wrote almost all of it. Not required for trivial or purely
+mechanical changes (renames, autocomplete). Never use `Co-authored-by`, which is reserved for humans.
