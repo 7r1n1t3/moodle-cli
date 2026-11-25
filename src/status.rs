@@ -59,8 +59,10 @@ pub async fn run(
                     lines: &mut Vec<(i64, String, String)>,
                     row: TodoRow,
                     tag: String,
-                    line: String| {
-            let line = if known.contains(&row.key) {
+                    line: String,
+                    old_keys: &[String]| {
+            let is_known = known.contains(&row.key) || old_keys.iter().any(|k| known.contains(k));
+            let line = if is_known {
                 line
             } else {
                 format!("{line} {}", col("(new!)", RED))
@@ -114,7 +116,7 @@ pub async fn run(
                 due,
                 status,
             };
-            push(&mut rows, &mut lines, row, tag, line);
+            push(&mut rows, &mut lines, row, tag, line, &[]);
         }
 
         // Close date per quiz course-module id. The calendar applies user and
@@ -171,6 +173,15 @@ pub async fn run(
                     col(&format!("○ {status}"), YELLOW)
                 }
             };
+            // Before quizzes were listed on their own, they were stored under
+            // their calendar events' keys; don't flag those as new again.
+            let old_keys: Vec<String> = course_events
+                .iter()
+                .filter(|e| {
+                    e.modulename.as_deref() == Some("quiz") && e.instance == Some(q.coursemodule)
+                })
+                .map(|e| format!("event:{}", e.id))
+                .collect();
             let line = format!("{} [quiz]  — due {}", q.name, when(due, now));
             let row = TodoRow {
                 key: format!("quiz:{}", q.id),
@@ -182,7 +193,7 @@ pub async fn run(
                 due,
                 status: status.into(),
             };
-            push(&mut rows, &mut lines, row, tag, line);
+            push(&mut rows, &mut lines, row, tag, line, &old_keys);
         }
 
         for e in course_events {
@@ -221,7 +232,7 @@ pub async fn run(
                 due: ts,
                 status: if overdue { "overdue" } else { "todo" }.into(),
             };
-            push(&mut rows, &mut lines, row, tag, line);
+            push(&mut rows, &mut lines, row, tag, line, &[]);
         }
 
         println!(

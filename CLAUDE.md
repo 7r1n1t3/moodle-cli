@@ -32,7 +32,7 @@ prek run --all-files                            # fmt, clippy, rust-analyzer, te
 - `src/download.rs`: the picker flow. Files come from `core_course_get_contents` (modules with `contents[type == "file"]`) and from assignment `introattachments`. Already-downloaded files are tagged `(downloaded …)`, or `(updated)` if Moodle's `timemodified` is newer.
 - `src/portal.rs`: `pick_folder` opens `OpenFile` with `directory=true`. Cancelling (portal `Cancelled` or `Other`) returns to the file list. `download::target_paths` keeps only the last component of each filename and adds ` (2)`, ` (3)`, … when names repeat within a batch. Files that already exist are listed and need a confirmation; declining returns to the file list.
 - `src/db.rs`: SQLite in `~/.local/share/moodle-cli/moodle-cli.db`. Migrations are keyed on `PRAGMA user_version`; append new ones to `MIGRATIONS`, never edit old ones.
-  - `todo_items`: key `assign:<id>` / `event:<id>`, with `first_seen` and `last_seen`.
+  - `todo_items`: key `assign:<id>` / `quiz:<id>` / `event:<id>`, with `first_seen` and `last_seen`.
   - `downloads`: one row per saved file (URL, timemodified, path, time).
 - `src/fmt.rs`: ANSI colours, relative dates and sizes.
 
