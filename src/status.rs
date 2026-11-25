@@ -124,8 +124,16 @@ pub async fn run(
             if due == 0 || !(from..=to).contains(&due) {
                 continue;
             }
+            // A quiz the user can list but not open (hidden, restricted)
+            // fails here; skip it rather than abort the whole listing.
+            let attempts = match client.quiz_attempts(q.id).await {
+                Ok(attempts) => attempts,
+                Err(err) => {
+                    eprintln!("Could not load attempts for {}: {err}", q.name);
+                    continue;
+                }
+            };
             seen.insert(("quiz", q.coursemodule));
-            let attempts = client.quiz_attempts(q.id).await?;
             let status = quiz_status(&attempts);
             let tag = if status == "submitted" {
                 let mut tag = col("✓ submitted", GREEN);
